@@ -24,8 +24,8 @@ void test_environment() {
     // not existing
     assertf(environment_get(env, "unexisting") == NULL, "expected NULL, got something");
 
-    // free env
     free_environment(env);
+    free_environment_pool();
 }
 
 struct object *test_eval(char *input, unsigned char keep_prog)
@@ -35,14 +35,19 @@ struct object *test_eval(char *input, unsigned char keep_prog)
     program = parse_program(&parser);
     assertf(parser.errors == 0, "parser got %d errors", parser.errors);
     struct environment *env = make_environment(16);
-    struct object *obj = eval_program(program, env);
+    env->ref_count++;
+    struct object *result = eval_program(program, env);    
+    struct object *obj = copy_object(result);
 
     // Free'ing the program clears the identifier values, so we can't do that yet
     // Unless we copy them in identifier_list
     if (!keep_prog) {
         free_program(program);
     }
+    
     free_environment(env);
+    free_environment_pool();
+    free_object_pool();
     return obj;
 }
 
@@ -51,7 +56,6 @@ void test_integer_object(struct object *obj, int expected)
     assertf(!!obj, "expected integer object, got null pointer");
     assertf(obj->type == OBJ_INT, "wrong object type: expected %s, got %s %s", object_type_to_str(OBJ_INT), object_type_to_str(obj->type), obj->error);
     assertf(obj->integer == expected, "wrong integer value: expected %d, got %d", expected, obj->integer);
-    free_object(obj);
 }
 
 void test_boolean_object(struct object *obj, char expected)
@@ -59,7 +63,6 @@ void test_boolean_object(struct object *obj, char expected)
     assertf(!!obj, "expected boolean object, got null pointer");
     assertf(obj->type == OBJ_BOOL, "wrong object type: expected %s, got %s %s", object_type_to_str(OBJ_BOOL), object_type_to_str(obj->type), obj->error);
     assertf(obj->boolean == expected, "wrong boolean value: expected %d, got %d", expected, obj->boolean);
-    free_object(obj);
 }
 
 union object_value {
@@ -73,7 +76,6 @@ void test_error_object(struct object *obj, char *expected) {
     assertf(!!obj, "expected error object, got null pointer");
     assertf(obj->type == OBJ_ERROR, "wrong object type: expected %s, got %s", object_type_to_str(OBJ_ERROR), object_type_to_str(obj->type));
     assertf(strcmp(obj->error, expected) == 0, "invalid error message: expected %s, got %s", expected, obj->error);
-    free_object(obj);
 }
 
 void test_object(struct object *obj, enum object_type type, union object_value value)
@@ -328,8 +330,6 @@ void test_function_object() {
     char *expected_body = "(x + 2)";
     block_statement_to_str(tmp, obj->function.body);
     assertf(strcmp(tmp, expected_body) == 0, "function body is not \"%s\", got \"%s\"", expected_body, tmp);
-    free_program(program);
-    free_object(obj);
 }
 
 void test_function_calls() {
@@ -383,7 +383,6 @@ void test_closures() {
     test_integer_object(obj, 4);
 }
 
-
 void test_invalid_function() {
     char *input = "              \
         let my_function = fn(a, b) { 100 };      \
@@ -395,19 +394,45 @@ void test_invalid_function() {
 }
 
 void test_recursive_function() {
-    char *input = "              \
-        let fibonacci = fn(x) {  \
-            if (x < 2) {         \
-                x        \
-            } else {             \
-                return fibonacci(x-1) + fibonacci(x-2); \
+    char *input = "                     \
+        let fibonacci = fn(x) {         \
+           if (x < 2) {                 \
+                return x;               \
+            } else {                    \
+                return fibonacci(x - 1) + fibonacci(x - 2); \
             }                   \
         };                      \
-        fibonacci(20)        \
+        fibonacci(20)           \
     ";
     
     struct object *obj = test_eval(input, 0);
     test_integer_object(obj, 6765);
+}
+
+void test_actual_code() {
+    char *input = " \
+        let a = 100;\
+        let b = 200;\
+        let add = fn (a, b) {\
+           let tmp = a;\
+           let a = b;\
+           let b = tmp;\
+           return a + b;\
+        };\
+        let multiply = fn(a, b) { return b * a; };\
+        if (a) {\
+            if (add(100, a) == 200) {\
+                if (multiply(a, b) == 20000) {\
+                    return b;\
+                }\
+            }\
+        }\
+        \
+        return -1;\
+    ";
+    
+    struct object *obj = test_eval(input, 0);
+    test_integer_object(obj, 200);
 }
 
 int main()
@@ -423,8 +448,9 @@ int main()
     test_function_object();
     test_function_calls();
     test_closing_environments();
-    test_recursive_function();
     test_invalid_function();
-    //test_closures();
+    test_closures();
+    //test_recursive_function();
+    test_actual_code();
     printf("\x1b[32mAll eval tests passed!\033[0m\n");
 }

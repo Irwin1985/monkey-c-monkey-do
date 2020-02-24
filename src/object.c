@@ -92,6 +92,7 @@ struct object *make_integer_object(long value)
     obj->type = OBJ_INT;
     obj->integer = value;
     obj->return_value = 0;
+    obj->ref_count = 0;
     return obj;
 }
 
@@ -110,7 +111,9 @@ struct object *make_error_object(char *format, ...) {
     }
 
     obj->type = OBJ_ERROR;
-    obj->return_value = 0;
+    // always return errors
+    obj->ref_count = 1;
+    obj->return_value = 1;
     va_start(args, format);  
     vsnprintf(obj->error, l + 16, format, args);
     va_end(args);
@@ -124,6 +127,35 @@ struct object *make_function_object(struct identifier_list *parameters, struct b
     obj->function.parameters = parameters;
     obj->function.body = body;
     obj->function.env = env;
+    env->ref_count++;
+    obj->ref_count = 0;
+    return obj;
+}
+
+
+struct object *make_return_object(struct object *obj)
+{
+    switch (obj->type)
+    {
+    case OBJ_INT:
+    case OBJ_FUNCTION:
+    case OBJ_ERROR:
+        obj->return_value = 1;
+        return obj;
+        break;
+    case OBJ_BOOL:
+        if (obj == object_false) {
+            return object_false_return;
+        } else {
+            return object_true_return;
+        }
+        break;
+    case OBJ_NULL:
+        obj = object_null_return;
+        return obj;
+        break;
+    }
+
     return obj;
 }
 
@@ -140,7 +172,7 @@ struct object *copy_object(struct object *obj) {
             return make_function_object(obj->function.parameters, obj->function.body, obj->function.env);
 
         case OBJ_ERROR: 
-            return obj;
+            return make_error_object(obj->error);
     }
 
     // TODO: This should not be reached, but also potential problem later on
@@ -149,6 +181,7 @@ struct object *copy_object(struct object *obj) {
 
 void free_object(struct object *obj)
 {   
+    
     switch (obj->type) {
         case OBJ_NULL: 
         case OBJ_BOOL: 
@@ -160,22 +193,31 @@ void free_object(struct object *obj)
             free(obj);
             break;
         
-        case OBJ_FUNCTION:
+        case OBJ_FUNCTION:        
         case OBJ_INT:
-            // return object to pool so future calls of make_object can use it
+            if (--obj->ref_count > 0) {
+                return;
+            }
+
             obj->next = object_pool.head;
             object_pool.head = obj;
             break;
-
     }
 }
 
-
 unsigned char is_object_truthy(struct object *obj)
 {
+    if (obj == object_true) {
+        return 1;
+    }
+
     if (obj == object_null || obj == object_false)
     {
         return 0;
+    }
+
+    if (obj->type == OBJ_INT) {
+        return obj->integer > 0;
     }
 
     return 1;
@@ -218,6 +260,7 @@ void object_to_str(char *str, struct object *obj)
 void free_object_pool() {
     struct object *obj = object_pool.head;
     struct object *next = NULL;
+
     while (obj) {
         next = obj->next;
         free(obj);

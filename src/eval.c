@@ -68,48 +68,41 @@ struct object *eval_prefix_expression(operator operator, struct object *right)
 
 struct object *eval_integer_infix_expression(operator operator, struct object *left, struct object *right)
 {
-    struct object *result;
-
     switch (operator[0])
     {
     case '+':
-        result = make_integer_object(left->integer + right->integer);
+        return make_integer_object(left->integer + right->integer);
         break;
     case '-':
-        result = make_integer_object(left->integer - right->integer);
+        return make_integer_object(left->integer - right->integer);
         break;
     case '*':
-        result = make_integer_object(left->integer * right->integer);
+        return make_integer_object(left->integer * right->integer);
         break;
     case '/':
-        result = make_integer_object(left->integer / right->integer);
+        return make_integer_object(left->integer / right->integer);
         break;
     case '<':
-        result = make_boolean_object(left->integer < right->integer);
+        return make_boolean_object(left->integer < right->integer);
         break;
     case '>':
-        result = make_boolean_object(left->integer > right->integer);
+        return make_boolean_object(left->integer > right->integer);
         break;
     case '=':
         if (operator[1] == '=') {
-            result = make_boolean_object(left->integer == right->integer);
-        } else {
-            result = object_null;
+            return make_boolean_object(left->integer == right->integer);
         }
         break;
     case '!':
         if (operator[1] == '=') {
-            result = make_boolean_object(left->integer != right->integer);
-        } else { 
-            result = object_null;
+            return make_boolean_object(left->integer != right->integer);
         }
         break;
     default:
-        result = object_null;
         break;
     }
 
-    return result;
+    return object_null;
 }
 
 struct object *eval_infix_expression(operator operator, struct object *left, struct object *right)
@@ -161,7 +154,7 @@ struct object *eval_identifier(struct identifier *ident, struct environment *env
     if (obj == NULL) {
         return make_error_object("identifier not found: %s", ident->value);
     }
-    return copy_object(obj);
+    return obj;
 }
 
 struct object_list *eval_expression_list(struct expression_list *list, struct environment *env) {
@@ -172,13 +165,13 @@ struct object_list *eval_expression_list(struct expression_list *list, struct en
 
         if (result->cap < list->size) {
             result->values = realloc(result->values, sizeof *result->values * list->size);
+            result->cap = list->size;
             if (!result->values) {
                 err(EXIT_FAILURE, "out of memory");
             }
-            result->cap = list->size;
         }
     } else {
-        result = malloc(sizeof (struct object_list));
+        result = malloc(sizeof *result);
         if (!result) {
             err(EXIT_FAILURE, "out of memory");
         }
@@ -198,7 +191,6 @@ struct object_list *eval_expression_list(struct expression_list *list, struct en
         if (is_object_error(obj->type)) {
             // move object to start of values because that's the only error type we check
             if (result->size > 1) {
-                free_object(result->values[0]);
                 result->values[0] = result->values[result->size];
             } 
             return result;
@@ -221,17 +213,13 @@ struct object *apply_function(struct object *obj, struct object_list *args) {
     for (int i=0; i < obj->function.parameters->size; i++) {
         environment_set(env, obj->function.parameters->values[i].value, args->values[i]);
     }
-
     struct object *result = eval_block_statement(obj->function.body, env);
+    free_environment(env);
 
     // return object list memory to pool so it can be re-used later on
     args->next = object_list_pool.head;
     object_list_pool.head = args;
-    free_environment(env);
 
-    if (!result) {
-        return NULL;
-    }
     result->return_value = 0;   
     return result;
 }
@@ -251,8 +239,8 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
             if (is_object_error(right->type)) {
                 return right;
             }
+
             struct object *result = eval_prefix_expression(expr->prefix.operator, right);
-            free_object(right);
             return result;
             break;
         }
@@ -264,13 +252,10 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
 
             struct object *right = eval_expression(expr->infix.right, env);
             if (is_object_error(right->type)) {
-                free_object(left);
                 return right;
             }
 
             struct object *result = eval_infix_expression(expr->infix.operator, left, right);
-            free_object(left);
-            free_object(right);
             return result;
             break;
         }
@@ -280,8 +265,6 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
             return eval_identifier(&expr->ident, env);
             break;
         case EXPR_FUNCTION: 
-            // TODO: We need to copy the current environment here, not point to it
-            // As it may change underneath it
             return make_function_object(&expr->function.parameters, expr->function.body, env);
             break;
         case EXPR_CALL: {
@@ -296,7 +279,6 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
             }
 
             struct object *result = apply_function(left, args);
-            free_object(left);
             return result;
             break;
         }
@@ -305,29 +287,6 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
     return object_null;
 }
 
-struct object *make_return_object(struct object *obj)
-{
-    switch (obj->type)
-    {
-    case OBJ_INT:
-    case OBJ_FUNCTION:
-    case OBJ_ERROR:
-        obj->return_value = 1;
-        break;
-    case OBJ_BOOL:
-        if (obj == object_false) {
-            return object_false_return;
-        } else {
-            return object_true_return;
-        }
-        break;
-    case OBJ_NULL:
-        obj = object_null_return;
-        break;
-    }
-
-    return obj;
-}
 
 struct object *eval_statement(struct statement *stmt, struct environment *env)
 {
@@ -365,7 +324,7 @@ struct object *eval_block_statement(struct block_statement *block, struct enviro
         }
 
         obj = eval_statement(&block->statements[i], env);
-        if (obj->return_value || obj->type == OBJ_ERROR)
+        if (obj->return_value)
         {
             return obj;
         }
@@ -389,7 +348,7 @@ struct object *eval_program(struct program *prog, struct environment *env)
         }
 
         obj = eval_statement(&prog->statements[i], env);
-        if (obj->return_value || obj->type == OBJ_ERROR)
+        if (obj->return_value)
         {
             return obj;
         }

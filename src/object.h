@@ -30,6 +30,9 @@ struct object
         struct function function;
     };
     unsigned char return_value;
+    unsigned int ref_count;
+
+    // for linking in pool
     struct object *next;
 };
 
@@ -60,5 +63,6 @@ void free_object_pool();
 void object_to_str(char *str, struct object *obj);
 unsigned char is_object_truthy(struct object *obj);
 unsigned char is_object_error(enum object_type type);
+struct object *make_return_object(struct object *obj);
 
 #endif
