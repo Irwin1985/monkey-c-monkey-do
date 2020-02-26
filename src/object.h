@@ -49,6 +49,7 @@ struct object
         struct object_list *array;
     };
     unsigned char return_value;
+    unsigned char gc_mark;
     struct object *next;
 };
 

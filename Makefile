@@ -22,7 +22,7 @@ parser_test:
 	$(BINDIR)/parser_test
 
 eval_test:
-	$(CC) $(TESTFLAGS) src/eval_test.c $(addprefix src/, eval.c parser.c env.c lexer.c token.c object.c builtins.c) -o $(BINDIR)/eval_test
+	$(CC) $(TESTFLAGS) src/eval_test.c $(addprefix src/, eval.c parser.c env.c lexer.c token.c object.c builtins.c gc.c) -o $(BINDIR)/eval_test
 	$(BINDIR)/eval_test
 
 $(BINDIR):

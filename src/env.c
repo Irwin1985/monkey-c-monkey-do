@@ -107,7 +107,7 @@ void free_environment(struct environment *env) {
         node = env->table[i];
         while (node) {
             next = node->next;
-            free_object(node);
+            //free_object(node);
             node = next;
         }
     }

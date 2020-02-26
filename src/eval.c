@@ -11,6 +11,7 @@
 #include "eval.h"
 #include "parser.h"
 #include "env.h"
+#include "gc.h"
 
 struct object *eval_expression(struct expression *expr, struct environment *env);
 struct object *eval_block_statement(struct block_statement *block, struct environment *env);
@@ -155,7 +156,6 @@ struct object *eval_if_expression(struct if_expression *expr, struct environment
     }
 
     unsigned char truthy = is_object_truthy(obj);
-    free_object(obj);
 
     if (truthy) {
         return eval_block_statement(expr->consequence, env);
@@ -192,13 +192,15 @@ struct object_list *eval_expression_list(struct expression_list *list, struct en
             if (result->size > 1) {
                 result->values[0] = result->values[result->size-1];
 
-                for (int j=1; j < result->size; j++) {
-                    free_object(result->values[j]);
-                }
+                // for (int j=1; j < result->size; j++) {
+                //     free_object(result->values[j]);
+                // }
             } 
 
             return result;
         }
+
+        //free_object(obj);
     }
 
     return result;
@@ -222,7 +224,13 @@ struct object *apply_function(struct object *obj, struct object_list *args) {
                 environment_set(env, obj->function.parameters->values[i].value, copy_object(args->values[i]));
             }
             struct object *result = eval_block_statement(obj->function.body, env);
-            free_environment(env);
+
+            // // only free environment if not returning a closure
+            // // this leaks memory right now
+            // if (result->type != OBJ_FUNCTION) {
+            //     free_environment(env);
+            //     result->function.env = NULL;
+            // }
 
             return result;
         }
@@ -267,7 +275,6 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
                 return right;
             }
             struct object *result = eval_prefix_expression(expr->prefix.operator, right);
-            free_object(right);
             return result;
             break;
         }
@@ -279,13 +286,10 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
 
             struct object *right = eval_expression(expr->infix.right, env);
             if (is_object_error(right->type)) {
-                free_object(left);
                 return right;
             }
 
             struct object *result = eval_infix_expression(expr->infix.operator, left, right);
-            free_object(left);
-            free_object(right);
             return result;
             break;
         }
@@ -306,13 +310,11 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
 
             struct object_list *args = eval_expression_list(&(expr->call.arguments), env);
             if (args->size >= 1 && is_object_error(args->values[0]->type)) {
-                free_object(left);
                 return args->values[0];
             }
 
             struct object *result = apply_function(left, args);
             free_object_list(args);
-            free_object(left);
             return result;
             break;
         }
@@ -336,13 +338,10 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
 
             struct object *index = eval_expression(expr->index.index, env);
             if (is_object_error(index->type)) {
-                free_object(left);
                 return index;
             }
 
             struct object *result = eval_index_expression(left, index);
-            free_object(left);
-            free_object(index);
             return result;
         }
     }
@@ -382,6 +381,7 @@ struct object *make_return_object(struct object *obj)
 struct object *eval_statement(struct statement *stmt, struct environment *env)
 {
     struct object *result = NULL;
+    gc_run(gc);
 
     switch (stmt->type)
     {
@@ -406,14 +406,10 @@ struct object *eval_block_statement(struct block_statement *block, struct enviro
     struct object *obj = NULL;
     for (int i = 0; i < block->size; i++)
     {
-        if (obj) {
-            free_object(obj);
-        }
-
         obj = eval_statement(&block->statements[i], env);
         if (obj->return_value)
         {
-            return obj;
+            break;
         }
     }
 
@@ -424,19 +420,18 @@ struct object *eval_program(struct program *prog, struct environment *env)
 {
     struct object *obj = NULL;
 
+    gc_init(env);
+
     for (int i = 0; i < prog->size; i++)
     {
-        if (obj) {
-            free_object(obj);
-        }
-
         obj = eval_statement(&prog->statements[i], env);
         if (obj->return_value)
         {
-            return obj;
+           break;
         }
     }
 
+    gc_destroy(gc, obj);
     return obj;
 }
 

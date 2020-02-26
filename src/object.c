@@ -5,6 +5,7 @@
 #include <stdio.h> 
 #include "object.h"
 #include "parser.h"
+#include "gc.h"
 
 struct object_list *copy_object_list(struct object_list *original);
 
@@ -61,7 +62,7 @@ const char *object_type_to_str(enum object_type t)
     return object_names[t];
 }
 
-struct object *make_object() {
+struct object *make_object(enum object_type type) {
    struct object *obj = object_pool_head;
 
    if (!obj) {
@@ -74,30 +75,30 @@ struct object *make_object() {
        object_pool_head = obj->next;
        obj->next = NULL;
    }
-
+   obj->gc_mark = 0;
+   obj->type = type;
+   obj->name = NULL;
    obj->return_value = 0;
+   gc_add(gc, obj);
    return obj;
 }
 
 struct object *make_integer_object(long value)
 {
-    struct object *obj = make_object();
-    obj->type = OBJ_INT;
+    struct object *obj = make_object(OBJ_INT);
     obj->integer = value;
     return obj;
 }
 
 struct object *make_array_object(struct object_list *elements) {
-    struct object *obj = make_object();
-    obj->type = OBJ_ARRAY;
+    struct object *obj = make_object(OBJ_ARRAY);
     obj->array = copy_object_list(elements);
     return obj;
 }
 
 struct object *make_string_object(char *str1, char *str2)
 {
-    struct object *obj = make_object();
-    obj->type = OBJ_STRING;
+    struct object *obj = make_object(OBJ_STRING);
     
     // allocate enough memory to fit both strings
     int l = strlen(str1) + (str2 ? strlen(str2) : 0) + 1;
@@ -120,8 +121,7 @@ struct object *make_string_object(char *str1, char *str2)
 struct object *make_error_object(char *format, ...) {
     va_list args;
 
-    struct object *obj = make_object();
-    obj->type = OBJ_ERROR;
+    struct object *obj = make_object(OBJ_ERROR);
 
     size_t l = strlen(format);
     obj->error = malloc(l + 64);
@@ -138,8 +138,7 @@ struct object *make_error_object(char *format, ...) {
 }
 
 struct object *make_function_object(struct identifier_list *parameters, struct block_statement *body, struct environment *env) {
-    struct object *obj = make_object();
-    obj->type = OBJ_FUNCTION;
+    struct object *obj = make_object(OBJ_FUNCTION);
     obj->function.parameters = parameters;
     obj->function.body = body;
     obj->function.env = env;
@@ -205,8 +204,6 @@ void free_object(struct object *obj)
             break;
 
         case OBJ_FUNCTION:
-            // free_environment(obj->function.env);
-            // obj->function.env = NULL;
             break;
 
        default:
@@ -251,9 +248,9 @@ struct object_list *make_object_list(unsigned int cap) {
 }
 
 void free_object_list(struct object_list *list) {
-    for (int i=0; i < list->size; i++) {
-        free_object(list->values[i]);
-    }
+    // for (int i=0; i < list->size; i++) {
+    //     free_object(list->values[i]);
+    // }
 
     list->next = object_list_pool_head;
     object_list_pool_head = list;
