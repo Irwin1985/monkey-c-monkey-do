@@ -380,14 +380,14 @@ struct object *eval_statement(struct statement *stmt, struct environment *env)
     switch (stmt->type)
     {
     case STMT_EXPR:
-        result = eval_expression(stmt->value, env);
+        result = eval_expression(&stmt->value, env);
         return result;
     case STMT_LET: 
-        result = eval_expression(stmt->value, env);
+        result = eval_expression(&stmt->value, env);
         environment_set(env, stmt->name.value, result);
         return result;
     case STMT_RETURN:
-        result = eval_expression(stmt->value, env);
+        result = eval_expression(&stmt->value, env);
         result = make_return_object(result);
         return result;
     }

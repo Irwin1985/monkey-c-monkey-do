@@ -70,14 +70,6 @@ struct identifier_list {
     unsigned int size;
     unsigned int cap;
 };
-
-struct statement {
-    enum statement_type type;
-    struct token token;
-    struct identifier name;
-    struct expression *value;
-};
-
 struct block_statement {
     struct token token;
     struct statement *statements;
@@ -129,6 +121,13 @@ struct expression {
         struct index_expression index;
     };
 } expression;
+
+struct statement {
+    enum statement_type type;
+    struct token token;
+    struct identifier name;
+    struct expression value;
+};
 
 struct program {
     struct statement *statements;

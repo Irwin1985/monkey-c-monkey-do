@@ -8,7 +8,7 @@
 struct expression *parse_expression(struct parser *p, int precedence);
 int parse_statement(struct parser *p, struct statement *s);
 void expression_to_str(char *str, struct expression *expr);
-void free_expression(struct expression *expr);
+void free_expression(struct expression *expr, unsigned char free_self);
 enum operator parse_operator(enum token_type t);
 
 enum precedence get_token_precedence(struct token t) {
@@ -85,7 +85,11 @@ int parse_let_statement(struct parser *p, struct statement *s) {
 
     // parse expression
     next_token(p);
-    s->value = parse_expression(p, LOWEST);
+
+    struct expression *expr = parse_expression(p, LOWEST);
+    memcpy(&s->value, expr, sizeof *expr);
+    free(expr);
+
     if (next_token_is(p, TOKEN_SEMICOLON)) {
         next_token(p);
     }
@@ -99,7 +103,9 @@ int parse_return_statement(struct parser *p, struct statement *s) {
 
     // parse expression
     next_token(p);
-    s->value = parse_expression(p, LOWEST);
+    struct expression *expr = parse_expression(p, LOWEST);
+    memcpy(&s->value, expr, sizeof *expr);
+    free(expr);
 
     if (next_token_is(p, TOKEN_SEMICOLON)) {
         next_token(p);
@@ -512,7 +518,10 @@ struct expression *parse_expression(struct parser *p, int precedence) {
 int parse_expression_statement(struct parser *p, struct statement *s) {
     s->type = STMT_EXPR;
     s->token = p->current_token;
-    s->value = parse_expression(p, LOWEST);
+    
+    struct expression *expr = parse_expression(p, LOWEST);
+    memcpy(&s->value, expr, sizeof *expr);
+    free(expr);
 
     if (next_token_is(p, TOKEN_SEMICOLON)) {
         next_token(p);
@@ -572,14 +581,14 @@ void let_statement_to_str(char *str, struct statement *stmt) {
     strcat(str, " ");
     strcat(str, stmt->name.value);
     strcat(str, " = ");
-    expression_to_str(str, stmt->value);
+    expression_to_str(str, &(stmt->value));
     strcat(str, ";");
 }
 
 void return_statement_to_str(char *str, struct statement *stmt) {
     strcat(str, stmt->token.literal);
     strcat(str, " ");
-    expression_to_str(str, stmt->value);
+    expression_to_str(str, &(stmt->value));
     strcat(str, ";");
 }
 
@@ -587,7 +596,7 @@ void statement_to_str(char *str, struct statement *stmt) {
     switch (stmt->type) {
         case STMT_LET: let_statement_to_str(str, stmt); break;
         case STMT_RETURN: return_statement_to_str(str, stmt); break;
-        case STMT_EXPR: expression_to_str(str, stmt->value); break;
+        case STMT_EXPR: expression_to_str(str, &(stmt->value)); break;
     }
 }
 
@@ -752,25 +761,20 @@ char *operator_to_str(enum operator operator) {
 
 void free_statements(struct statement *stmts, unsigned int size) {
     for (int i=0; i < size; i++) {
-        free_expression(stmts[i].value);
+        free_expression(&(stmts[i].value), 0);
     }
-    
     free(stmts);
 }
 
-void free_expression(struct expression *expr) {
-    if (expr == NULL) {
-        return;
-    }
-
+void free_expression(struct expression *expr, unsigned char free_self) {
     switch (expr->type) {
         case EXPR_PREFIX: 
-            free_expression(expr->prefix.right);
+            free_expression(expr->prefix.right, 1);
         break;
 
         case EXPR_INFIX:
-            free_expression(expr->infix.left);
-            free_expression(expr->infix.right);
+            free_expression(expr->infix.left, 1);
+            free_expression(expr->infix.right, 1);
         break;
 
         case EXPR_FUNCTION:
@@ -780,7 +784,7 @@ void free_expression(struct expression *expr) {
         break;
 
         case EXPR_IF:
-            free_expression(expr->ifelse.condition);
+            free_expression(expr->ifelse.condition, 1);
 
             free_statements(expr->ifelse.consequence->statements, expr->ifelse.consequence->size);
             free(expr->ifelse.consequence);
@@ -793,10 +797,10 @@ void free_expression(struct expression *expr) {
 
         case EXPR_CALL:
             for (int i=0; i < expr->call.arguments.size; i++) {
-                free_expression(expr->call.arguments.values[i]);
+                free_expression(expr->call.arguments.values[i], 1);
             }
             free(expr->call.arguments.values);
-            free_expression(expr->call.function);
+            free_expression(expr->call.function, 1);
         break;
 
         case EXPR_STRING:
@@ -805,14 +809,14 @@ void free_expression(struct expression *expr) {
 
        case EXPR_ARRAY: 
             for (int i=0; i < expr->array.size; i++) {
-                free_expression(expr->array.values[i]);
+                free_expression(expr->array.values[i], 1);
             }
             free(expr->array.values);
        break;
 
        case EXPR_INDEX: 
-            free_expression(expr->index.left);
-            free_expression(expr->index.index);
+            free_expression(expr->index.left, 1);
+            free_expression(expr->index.index, 1);
        break;
 
        case EXPR_INT: 
@@ -822,7 +826,9 @@ void free_expression(struct expression *expr) {
        break;
     }
 
-    free(expr);
+    if (free_self) {
+        free(expr);
+    }
 }
 
 void free_program(struct program *p) {
