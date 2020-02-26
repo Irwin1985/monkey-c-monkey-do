@@ -399,12 +399,11 @@ void test_if_expression_parsing() {
     union expression_value right = {.str_value = "y"};
     test_infix_expression(expr.ifelse.condition, left, OP_LT, right);
 
-    struct block_statement *consequence = expr.ifelse.consequence;
-    assertf(!!consequence, "expected consequence block statement, got NULL\n");
-    assertf(consequence->size == 1, "invalid consequence size: expected %d, got %d\n", 1, consequence->size);
-    assertf(consequence->statements[0].type == STMT_EXPR, "statements[0] is not a statement expression, got %d\n", consequence->statements[0].type);
-    test_identifier_expression(&consequence->statements[0].value, "x");
-    assertf(!expr.ifelse.alternative, "expected NULL, got alternative block statement\n");
+    struct block_statement consequence = expr.ifelse.consequence;
+    assertf(consequence.size == 1, "invalid consequence size: expected %d, got %d\n", 1, consequence.size);
+    assertf(consequence.statements[0].type == STMT_EXPR, "statements[0] is not a statement expression, got %d\n", consequence.statements[0].type);
+    test_identifier_expression(&consequence.statements[0].value, "x");
+    assertf(!expr.ifelse.has_alternative, "expected NULL, got alternative block statement\n");
     free_program(program);
 }
 
@@ -424,15 +423,14 @@ void test_if_else_expression_parsing() {
     union expression_value right = {.str_value = "y"};
     test_infix_expression(expr.ifelse.condition, left, OP_LT, right);
 
-    struct block_statement *consequence = expr.ifelse.consequence;
-    assertf(!!consequence, "expected consequence block statement, got NULL\n");
-    assertf(consequence->size == 1, "invalid consequence size: expected %d, got %d\n", 1, consequence->size);
-    assertf(consequence->statements[0].type == STMT_EXPR, "statements[0] is not a statement expression, got %d", consequence->statements[0].type);
-    test_identifier_expression(&consequence->statements[0].value, "x");
+    struct block_statement consequence = expr.ifelse.consequence;
+    assertf(consequence.size == 1, "invalid consequence size: expected %d, got %d\n", 1, consequence.size);
+    assertf(consequence.statements[0].type == STMT_EXPR, "statements[0] is not a statement expression, got %d", consequence.statements[0].type);
+    test_identifier_expression(&consequence.statements[0].value, "x");
 
-    struct block_statement *alternative = expr.ifelse.alternative;
-    assertf(alternative != NULL, "expected alternative, got NULL");
-    assertf(alternative->size == 1, "invalid alternative size: expected %d, got %d\n", 1, alternative->size);
+    struct block_statement alternative = expr.ifelse.alternative;
+    assertf(expr.ifelse.has_alternative == 1, "expected alternative, got NULL");
+    assertf(alternative.size == 1, "invalid alternative size: expected %d, got %d\n", 1, alternative.size);
     free_program(program);
 }
 
@@ -453,12 +451,12 @@ void test_function_literal_parsing() {
     assertf(expr.function.parameters.size == 2, "invalid param size: expected %d, got %d\n", 2, expr.function.parameters.size);
     assertf(strcmp(expr.function.parameters.values[0].value, "x") == 0, "invalid parameter[0]: expected %s, got %s\n", "x", expr.function.parameters.values[0].value);
     assertf(strcmp(expr.function.parameters.values[1].value, "y") == 0, "invalid parameter[0]: expected %s, got %s\n", "x", expr.function.parameters.values[1].value);
-    assertf(expr.function.body->size == 1, "invalid body size: expected %d, got %d\n", 1, expr.function.body->size);
+    assertf(expr.function.body.size == 1, "invalid body size: expected %d, got %d\n", 1, expr.function.body.size);
     
     union expression_value left = {.str_value = "x"};
     enum operator op = OP_ADD;
     union expression_value right = {.str_value = "y"};
-    test_infix_expression(&expr.function.body->statements[0].value, left, op, right);
+    test_infix_expression(&expr.function.body.statements[0].value, left, op, right);
     free_program(program);
 }
 

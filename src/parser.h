@@ -79,13 +79,14 @@ struct block_statement {
 
 struct if_expression {
     struct expression *condition;
-    struct block_statement *consequence;
-    struct block_statement *alternative;
+    struct block_statement consequence;
+    unsigned char has_alternative;
+    struct block_statement alternative;
 };
 
 struct function_literal {
     struct identifier_list parameters;
-    struct block_statement *body;
+    struct block_statement body;
 };
 
 struct expression_list {

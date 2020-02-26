@@ -145,9 +145,9 @@ struct object *eval_if_expression(struct if_expression *expr, struct environment
     free_object(obj);
 
     if (truthy) {
-        return eval_block_statement(expr->consequence, env);
-    } else if (expr->alternative) {
-        return eval_block_statement(expr->alternative, env);
+        return eval_block_statement(&expr->consequence, env);
+    } else if (expr->has_alternative) {
+        return eval_block_statement(&expr->alternative, env);
     }
 
     return object_null;
@@ -286,7 +286,7 @@ struct object *eval_expression(struct expression *expr, struct environment *env)
             return eval_identifier(&expr->ident, env);
             break;
         case EXPR_FUNCTION: 
-            return make_function_object(&expr->function.parameters, expr->function.body, env);
+            return make_function_object(&expr->function.parameters, &expr->function.body, env);
             break;
         case EXPR_CALL: {
             struct object *left = eval_expression(expr->call.function, env);

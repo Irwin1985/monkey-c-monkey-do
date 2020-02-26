@@ -293,16 +293,12 @@ struct expression *parse_grouped_expression(struct parser *p) {
     return expr;
 }
 
-struct block_statement *parse_block_statement(struct parser *p) {
-    struct block_statement *b = malloc(sizeof *b);
-    if (!b) {
-        err(EXIT_FAILURE, "out of memory");
-    }
-
-    b->cap = 16;
-    b->size = 0;
-    b->statements = malloc(b->cap * sizeof (struct statement));
-    if (!b->statements) {
+struct block_statement parse_block_statement(struct parser *p) {
+    struct block_statement b;
+    b.cap = 16;
+    b.size = 0;
+    b.statements = malloc(b.cap * sizeof (struct statement));
+    if (!b.statements) {
         err(EXIT_FAILURE, "out of memory");
     }
     next_token(p);
@@ -310,11 +306,11 @@ struct block_statement *parse_block_statement(struct parser *p) {
     while (!current_token_is(p, TOKEN_RBRACE) && !current_token_is(p, TOKEN_EOF)) {
         struct statement s;
         if (parse_statement(p, &s) > -1) {
-            b->statements[b->size++] = s;
+            b.statements[b.size++] = s;
 
-            if (b->size >= b->cap) {
-                b->cap *= 2;
-                b->statements = realloc(b->statements, b->cap * sizeof *b->statements);
+            if (b.size >= b.cap) {
+                b.cap *= 2;
+                b.statements = realloc(b.statements, b.cap * sizeof *b.statements);
             }
         }
         next_token(p);
@@ -353,21 +349,21 @@ struct expression *parse_if_expression(struct parser *p) {
     }
 
     expr->ifelse.consequence = parse_block_statement(p);
+    expr->ifelse.has_alternative = 0;
 
     if (next_token_is(p, TOKEN_ELSE)) {
         next_token(p);
 
         if (!expect_next_token(p, TOKEN_LBRACE)) {
-            free(expr->ifelse.consequence);
+            //free(expr->ifelse.consequence);
             free(expr->ifelse.condition);
             free(expr);
             return NULL;
         }
 
+        expr->ifelse.has_alternative = 1;
         expr->ifelse.alternative = parse_block_statement(p);
-    } else {
-        expr->ifelse.alternative = NULL;
-    }
+    } 
 
     return expr;
 }
@@ -654,10 +650,10 @@ void expression_to_str(char *str, struct expression *expr) {
             strcat(str, "if ");
             expression_to_str(str, expr->ifelse.condition);
             strcat(str, " ");
-            block_statement_to_str(str, expr->ifelse.consequence);
-            if (expr->ifelse.alternative) {
+            block_statement_to_str(str, &expr->ifelse.consequence);
+            if (expr->ifelse.has_alternative) {
                 strcat(str, "else ");
-                block_statement_to_str(str, expr->ifelse.alternative);
+                block_statement_to_str(str, &expr->ifelse.alternative);
             }
         break;
 
@@ -666,7 +662,7 @@ void expression_to_str(char *str, struct expression *expr) {
             strcat(str, "(");
             identifier_list_to_str(str, &expr->function.parameters);
             strcat(str, ") ");
-            block_statement_to_str(str, expr->function.body);
+            block_statement_to_str(str, &expr->function.body);
         break;
 
         case EXPR_CALL:
@@ -779,19 +775,15 @@ void free_expression(struct expression *expr, unsigned char free_self) {
 
         case EXPR_FUNCTION:
             free(expr->function.parameters.values);
-            free_statements(expr->function.body->statements, expr->function.body->size);
-            free(expr->function.body);
+            free_statements(expr->function.body.statements, expr->function.body.size);
         break;
 
         case EXPR_IF:
             free_expression(expr->ifelse.condition, 1);
 
-            free_statements(expr->ifelse.consequence->statements, expr->ifelse.consequence->size);
-            free(expr->ifelse.consequence);
-
-            if (expr->ifelse.alternative) {
-                free_statements(expr->ifelse.alternative->statements, expr->ifelse.alternative->size);
-                free(expr->ifelse.alternative);
+            free_statements(expr->ifelse.consequence.statements, expr->ifelse.consequence.size);
+            if (expr->ifelse.has_alternative) {
+                free_statements(expr->ifelse.alternative.statements, expr->ifelse.alternative.size);
             }
         break;
 
